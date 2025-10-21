@@ -1,73 +1,69 @@
-# Feature Request API
+# Feature Request Tracker - Database Schema and Prisma Setup
 
-A RESTful API for managing feature requests.
+This repository contains the implementation of the database schema and Prisma setup for the Feature Request Tracker application as described in GitHub issue #5.
 
-## Features
+## Setup Details
 
-- Create new feature requests
-- Update request status
-- View all requests
-- View specific request details
-- Delete requests
+### Database Configuration
+- SQLite database is used for data storage
+- Prisma ORM is configured to interact with the database
+- Database schema includes models for FeatureRequest and StatusChange
 
-## API Endpoints
+### Models Implemented
+1. **FeatureRequest**
+   - Properties: id, title, description, status, createdAt, updatedAt, createdBy
+   - Relations: One-to-many with StatusChange
 
-- `POST /api/feature-requests` - Create a new feature request
-- `GET /api/feature-requests` - Get all feature requests
-- `GET /api/feature-requests/:id` - Get a specific feature request
-- `PUT /api/feature-requests/:id/status` - Update a feature request status
-- `DELETE /api/feature-requests/:id` - Delete a feature request
+2. **StatusChange**
+   - Properties: id, featureRequestId, oldStatus, newStatus, changedAt, changedBy
+   - Relations: Many-to-one with FeatureRequest
+
+### Environment Configuration
+- Database connection details are stored in the `.env` file
+- SQLite database file is stored at `./dev.db`
 
 ## Getting Started
 
 ### Prerequisites
-
-- Node.js (v14+)
-- PostgreSQL
+- Node.js (v14 or higher)
+- npm (v6 or higher)
 
 ### Installation
-
 1. Clone the repository
-2. Install dependencies: `npm install`
-3. Set up environment variables (see `.env.example`)
-4. Run database migrations: `npx prisma migrate dev`
-5. Start the server: `npm start`
+2. Install dependencies:
+   ```
+   npm install
+   ```
 
-## Development
+### Database Setup
+The database has already been set up with the initial migration. If you need to reset the database, you can run:
+```
+npx prisma migrate reset
+```
 
-- Run in development mode: `npm run dev`
-- Run tests: `npm test`
+### Using the Prisma Client
+A sample script (`setup.js`) has been created to demonstrate how to use the Prisma client to interact with the database. You can run it with:
+```
+node setup.js
+```
 
-## Implementation Details
+This script demonstrates:
+- Creating a new feature request
+- Updating the status of a feature request
+- Retrieving all feature requests
 
-This project implements the feature request API as described in [Issue #1](https://github.com/sakshiarora386/demo-test/issues/1).
+### Prisma Studio
+You can use Prisma Studio to view and edit the database visually:
+```
+npx prisma studio
+```
 
-### POST /api/feature-requests
+## Next Steps
+- Implement the API endpoints as described in the TRD
+- Add authentication and authorization
+- Implement validation for request payloads
+- Add error handling and logging
 
-Creates a new feature request with the following fields:
-- `title` (required): The title of the feature request
-- `description` (optional): A detailed description of the feature request
-
-The API automatically generates:
-- A unique ID for the feature request
-- Creation timestamp
-- User information (currently hardcoded, would be from authentication in production)
-- Initial status (NEW)
-
-### Validation
-
-The API validates:
-- Title is required and must be a string
-- Description is optional but must be a string if provided
-
-### Error Handling
-
-The API provides appropriate error responses:
-- 400 Bad Request for validation errors
-- 500 Internal Server Error for server-side issues
-
-### Database Schema
-
-The database schema includes:
-- FeatureRequest model with fields for title, description, status, timestamps, and user info
-- StatusChange model to track status changes over time
+## References
+- [Technical Requirements Document](docs/trd-backend.md)
+- [Prisma Documentation](https://www.prisma.io/docs/)
