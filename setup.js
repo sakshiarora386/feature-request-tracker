@@ -1,20 +1,26 @@
 // This is a simple setup script to demonstrate how to use the Prisma client
 const { PrismaClient } = require('@prisma/client');
+const { logger } = require('./middleware/logger');
+
 const prisma = new PrismaClient();
+
+// Placeholder for authenticated user ID
+// In a real application, this would come from an authentication system
+const CURRENT_USER_ID = 'current-user';
 
 async function main() {
   try {
-    console.log('Setting up the database...');
+    logger.info('Setting up the database...');
 
     // Create a new feature request
     const newFeatureRequest = await prisma.featureRequest.create({
       data: {
         title: 'Add dark mode support',
         description: 'Implement dark mode for better user experience in low-light environments',
-        createdBy: 'user123', // In a real app, this would be the authenticated user's ID
+        createdBy: CURRENT_USER_ID, // Use the placeholder user ID
       },
     });
-    console.log('Created new feature request:', newFeatureRequest);
+    logger.info('Created new feature request', { featureRequest: newFeatureRequest });
 
     // Update the status of the feature request
     const updatedFeatureRequest = await prisma.featureRequest.update({
@@ -25,7 +31,7 @@ async function main() {
           create: {
             oldStatus: 'NEW',
             newStatus: 'IN_PROGRESS',
-            changedBy: 'user456', // In a real app, this would be the authenticated user's ID
+            changedBy: CURRENT_USER_ID, // Use the placeholder user ID
           },
         },
       },
@@ -33,7 +39,10 @@ async function main() {
         statusHistory: true,
       },
     });
-    console.log('Updated feature request:', updatedFeatureRequest);
+    logger.info('Updated feature request', { 
+      id: updatedFeatureRequest.id,
+      status: updatedFeatureRequest.status
+    });
 
     // Get all feature requests
     const allFeatureRequests = await prisma.featureRequest.findMany({
@@ -41,11 +50,18 @@ async function main() {
         statusHistory: true,
       },
     });
-    console.log('All feature requests:', allFeatureRequests);
+    logger.info('All feature requests', { 
+      count: allFeatureRequests.length,
+      requests: allFeatureRequests
+    });
 
-    console.log('Database setup completed successfully!');
+    logger.info('Database setup completed successfully!');
   } catch (error) {
-    console.error('Error setting up the database:', error);
+    logger.error('Error setting up the database', { 
+      error: error.message,
+      stack: error.stack
+    });
+    process.exit(1);
   } finally {
     await prisma.$disconnect();
   }

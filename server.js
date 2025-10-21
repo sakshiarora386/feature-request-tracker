@@ -1,6 +1,13 @@
 const express = require('express');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
+const asyncHandler = require('express-async-handler');
+
+// Import custom middleware
+const { validate, schemas } = require('./middleware/validation');
+const { getCurrentUser } = require('./middleware/auth');
+const { errorHandler, ApiError } = require('./middleware/error-handler');
+const { logger, loggerMiddleware } = require('./middleware/logger');
 
 const prisma = new PrismaClient();
 const app = express();
@@ -9,42 +16,36 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-
-// Error handler middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Internal Server Error' });
-});
+app.use(loggerMiddleware);
+app.use(getCurrentUser); // Add authentication middleware
 
 // API Routes
 
 // Create a new feature request
-app.post('/api/feature-requests', async (req, res) => {
-  try {
+app.post(
+  '/api/feature-requests',
+  validate(schemas.createFeatureRequest),
+  asyncHandler(async (req, res) => {
     const { title, description } = req.body;
-    
-    if (!title) {
-      return res.status(400).json({ error: 'Title is required' });
-    }
     
     const newFeatureRequest = await prisma.featureRequest.create({
       data: {
         title,
         description,
-        createdBy: 'user123', // In a real app, this would be the authenticated user's ID
+        createdBy: req.user.id, // Use authenticated user's ID
       },
     });
     
+    logger.info('Feature request created', { id: newFeatureRequest.id });
     res.status(201).json(newFeatureRequest);
-  } catch (error) {
-    console.error('Error creating feature request:', error);
-    res.status(500).json({ error: 'Failed to create feature request' });
-  }
-});
+  })
+);
 
 // Get all feature requests
-app.get('/api/feature-requests', async (req, res) => {
-  try {
+app.get(
+  '/api/feature-requests',
+  validate(schemas.getFeatureRequests),
+  asyncHandler(async (req, res) => {
     const { sort_by, sort_order } = req.query;
     
     let orderBy = {};
@@ -61,16 +62,15 @@ app.get('/api/feature-requests', async (req, res) => {
       },
     });
     
+    logger.info('Feature requests retrieved', { count: featureRequests.length });
     res.status(200).json(featureRequests);
-  } catch (error) {
-    console.error('Error fetching feature requests:', error);
-    res.status(500).json({ error: 'Failed to fetch feature requests' });
-  }
-});
+  })
+);
 
 // Get a specific feature request by ID
-app.get('/api/feature-requests/:id', async (req, res) => {
-  try {
+app.get(
+  '/api/feature-requests/:id',
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     
     const featureRequest = await prisma.featureRequest.findUnique({
@@ -81,25 +81,21 @@ app.get('/api/feature-requests/:id', async (req, res) => {
     });
     
     if (!featureRequest) {
-      return res.status(404).json({ error: 'Feature request not found' });
+      throw new ApiError('RESOURCE_NOT_FOUND', 'Feature request not found', 404);
     }
     
+    logger.info('Feature request retrieved', { id });
     res.status(200).json(featureRequest);
-  } catch (error) {
-    console.error('Error fetching feature request:', error);
-    res.status(500).json({ error: 'Failed to fetch feature request' });
-  }
-});
+  })
+);
 
 // Update the status of a feature request
-app.put('/api/feature-requests/:id/status', async (req, res) => {
-  try {
+app.put(
+  '/api/feature-requests/:id/status',
+  validate(schemas.updateFeatureRequestStatus),
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
-    
-    if (!status) {
-      return res.status(400).json({ error: 'Status is required' });
-    }
     
     // Check if the feature request exists
     const existingFeatureRequest = await prisma.featureRequest.findUnique({
@@ -107,13 +103,7 @@ app.put('/api/feature-requests/:id/status', async (req, res) => {
     });
     
     if (!existingFeatureRequest) {
-      return res.status(404).json({ error: 'Feature request not found' });
-    }
-    
-    // Validate the status
-    const validStatuses = ['NEW', 'IN_PROGRESS', 'COMPLETED', 'REJECTED'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
+      throw new ApiError('RESOURCE_NOT_FOUND', 'Feature request not found', 404);
     }
     
     // Update the feature request and create a status change record
@@ -125,7 +115,7 @@ app.put('/api/feature-requests/:id/status', async (req, res) => {
           create: {
             oldStatus: existingFeatureRequest.status,
             newStatus: status,
-            changedBy: 'user456', // In a real app, this would be the authenticated user's ID
+            changedBy: req.user.id, // Use authenticated user's ID
           },
         },
       },
@@ -134,16 +124,20 @@ app.put('/api/feature-requests/:id/status', async (req, res) => {
       },
     });
     
+    logger.info('Feature request status updated', { 
+      id, 
+      oldStatus: existingFeatureRequest.status, 
+      newStatus: status 
+    });
+    
     res.status(200).json(updatedFeatureRequest);
-  } catch (error) {
-    console.error('Error updating feature request status:', error);
-    res.status(500).json({ error: 'Failed to update feature request status' });
-  }
-});
+  })
+);
 
 // Delete a feature request
-app.delete('/api/feature-requests/:id', async (req, res) => {
-  try {
+app.delete(
+  '/api/feature-requests/:id',
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     
     // Check if the feature request exists
@@ -152,7 +146,7 @@ app.delete('/api/feature-requests/:id', async (req, res) => {
     });
     
     if (!existingFeatureRequest) {
-      return res.status(404).json({ error: 'Feature request not found' });
+      throw new ApiError('RESOURCE_NOT_FOUND', 'Feature request not found', 404);
     }
     
     // Delete the feature request and its status history
@@ -165,20 +159,36 @@ app.delete('/api/feature-requests/:id', async (req, res) => {
       }),
     ]);
     
+    logger.info('Feature request deleted', { id });
     res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting feature request:', error);
-    res.status(500).json({ error: 'Failed to delete feature request' });
-  }
-});
+  })
+);
+
+// Error handler middleware (must be after all routes)
+app.use(errorHandler);
 
 // Start the server
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  logger.info(`Server is running on http://localhost:${PORT}`);
 });
 
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
+  logger.info('Shutting down server...');
   await prisma.$disconnect();
   process.exit(0);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception', { error: error.stack });
+  process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled promise rejection', { 
+    reason: reason instanceof Error ? reason.stack : reason,
+  });
+  process.exit(1);
 });
