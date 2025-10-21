@@ -1,0 +1,42 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum RequestStatus {
+  NEW
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+}
+
+model FeatureRequest {
+  id            String        @id @default(uuid())
+  title         String        
+  description   String?       
+  status        RequestStatus @default(NEW)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  createdBy     String        // User ID of the creator (future: link to User model)
+  statusHistory StatusChange[]
+}
+
+model StatusChange {
+  id               String        @id @default(uuid())
+  featureRequestId String
+  featureRequest   FeatureRequest @relation(fields: [featureRequestId], references: [id])
+  oldStatus        RequestStatus
+  newStatus        RequestStatus
+  changedAt        DateTime      @default(now())
+  changedBy        String        // User ID of the changer (future: link to User model)
+}
