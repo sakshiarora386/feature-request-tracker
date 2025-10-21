@@ -4,14 +4,41 @@ This document outlines the test cases for the database schema and API endpoints 
 
 ## Table of Contents
 
-1. [Database Schema Tests](#database-schema-tests)
-2. [API Endpoint Tests](#api-endpoint-tests)
+1. [Test Setup and Running Tests](#test-setup-and-running-tests)
+2. [Database Schema Tests](#database-schema-tests)
+3. [API Endpoint Tests](#api-endpoint-tests)
    - [Create Feature Request](#create-feature-request)
    - [Get All Feature Requests](#get-all-feature-requests)
    - [Get Feature Request by ID](#get-feature-request-by-id)
    - [Update Feature Request Status](#update-feature-request-status)
    - [Delete Feature Request](#delete-feature-request)
-3. [Test Setup and Utilities](#test-setup-and-utilities)
+4. [Test Utilities](#test-utilities)
+
+## Test Setup and Running Tests
+
+The tests are implemented using Jest and Supertest. To run the tests, follow these steps:
+
+1. Install the dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Set up the test environment:
+   ```bash
+   cp .env.example .env.test
+   ```
+
+3. Run the tests:
+   ```bash
+   npm test
+   ```
+
+To run the tests in watch mode (for development):
+```bash
+npm run test:watch
+```
+
+The test setup creates a separate test database to avoid affecting the development or production data. The test database is reset before each test to ensure a clean state.
 
 ## Database Schema Tests
 
@@ -135,43 +162,41 @@ These tests verify that the Prisma schema is correctly implemented and that the 
 | Non-existent ID | Test deleting a feature request with a non-existent ID | Non-existent UUID | Status: 404 Not Found<br>Error: Resource not found | Implied by API error handling |
 | Invalid ID Format | Test deleting a feature request with an invalid ID format | Invalid format (not UUID) | Status: 400 Bad Request<br>Error: Invalid ID format | Implied by API error handling |
 
-## Test Setup and Utilities
+## Test Utilities
 
-### Test Database Setup
+The tests use the following utilities to simplify common test operations:
 
-For testing, we should use a separate test database to avoid affecting the development or production data. The test database should be reset before each test suite runs to ensure a clean state.
+### Test Database Setup (setup.js)
+
+The `setup.js` file provides utilities for setting up and cleaning up the test database:
 
 ```javascript
-// Example test setup
+const { prisma, setupTestDatabase, cleanupTestDatabase, closePrismaClient } = require('./setup');
+
+// Set up the test database before all tests
 beforeAll(async () => {
-  // Connect to test database
-  testPrisma = new PrismaClient({
-    datasourceUrl: process.env.TEST_DATABASE_URL,
-  });
+  await setupTestDatabase();
 });
 
+// Clean up the test database before each test
 beforeEach(async () => {
-  // Clean up database before each test
-  await testPrisma.$transaction([
-    testPrisma.statusChange.deleteMany({}),
-    testPrisma.featureRequest.deleteMany({}),
-  ]);
+  await cleanupTestDatabase();
 });
 
+// Close the Prisma client after all tests
 afterAll(async () => {
-  // Disconnect from test database
-  await testPrisma.$disconnect();
+  await closePrismaClient();
 });
 ```
 
-### Test Utilities
+### Helper Functions
 
-Create helper functions to simplify common test operations:
+Helper functions are available to simplify common test operations:
 
 ```javascript
-// Example test utilities
+// Create a test feature request
 async function createTestFeatureRequest(data = {}) {
-  return testPrisma.featureRequest.create({
+  return prisma.featureRequest.create({
     data: {
       title: data.title || "Test Feature Request",
       description: data.description || "Test Description",
@@ -181,12 +206,13 @@ async function createTestFeatureRequest(data = {}) {
   });
 }
 
+// Update a test feature request status
 async function updateTestFeatureRequestStatus(id, status, userId = "test-user") {
-  const existingFeatureRequest = await testPrisma.featureRequest.findUnique({
+  const existingFeatureRequest = await prisma.featureRequest.findUnique({
     where: { id },
   });
   
-  return testPrisma.featureRequest.update({
+  return prisma.featureRequest.update({
     where: { id },
     data: {
       status,
@@ -205,41 +231,4 @@ async function updateTestFeatureRequestStatus(id, status, userId = "test-user") 
 }
 ```
 
-### API Test Examples
-
-Here are examples of how to implement the API tests using a testing framework like Jest and Supertest:
-
-```javascript
-// Example API test for creating a feature request
-describe("POST /api/feature-requests", () => {
-  it("should create a new feature request with valid data", async () => {
-    const response = await request(app)
-      .post("/api/feature-requests")
-      .send({
-        title: "New Feature",
-        description: "This is a test feature",
-      });
-    
-    expect(response.status).toBe(201);
-    expect(response.body).toHaveProperty("id");
-    expect(response.body.title).toBe("New Feature");
-    expect(response.body.description).toBe("This is a test feature");
-    expect(response.body.status).toBe("NEW");
-    expect(response.body).toHaveProperty("createdAt");
-    expect(response.body).toHaveProperty("updatedAt");
-  });
-
-  it("should return 400 when title is missing", async () => {
-    const response = await request(app)
-      .post("/api/feature-requests")
-      .send({
-        description: "Missing title",
-      });
-    
-    expect(response.status).toBe(400);
-    expect(response.body).toHaveProperty("code", "VALIDATION_ERROR");
-  });
-});
-```
-
-This test documentation provides a comprehensive framework for testing the database schema and API endpoints implemented in PR #13, ensuring that they meet the requirements specified in the related issues.
+These utilities make it easier to write tests for the API endpoints and ensure that the tests are consistent and maintainable.

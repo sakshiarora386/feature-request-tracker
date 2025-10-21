@@ -167,28 +167,34 @@ app.delete(
 // Error handler middleware (must be after all routes)
 app.use(errorHandler);
 
-// Start the server
-app.listen(PORT, () => {
-  logger.info(`Server is running on http://localhost:${PORT}`);
-});
-
-// Handle graceful shutdown
-process.on('SIGINT', async () => {
-  logger.info('Shutting down server...');
-  await prisma.$disconnect();
-  process.exit(0);
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  logger.error('Uncaught exception', { error: error.stack });
-  process.exit(1);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled promise rejection', { 
-    reason: reason instanceof Error ? reason.stack : reason,
+// Only start the server if this file is run directly
+if (require.main === module) {
+  // Start the server
+  app.listen(PORT, () => {
+    logger.info(`Server is running on http://localhost:${PORT}`);
   });
-  process.exit(1);
-});
+
+  // Handle graceful shutdown
+  process.on('SIGINT', async () => {
+    logger.info('Shutting down server...');
+    await prisma.$disconnect();
+    process.exit(0);
+  });
+
+  // Handle uncaught exceptions
+  process.on('uncaughtException', (error) => {
+    logger.error('Uncaught exception', { error: error.stack });
+    process.exit(1);
+  });
+
+  // Handle unhandled promise rejections
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled promise rejection', {
+      reason: reason instanceof Error ? reason.stack : reason,
+    });
+    process.exit(1);
+  });
+}
+
+// Export the app for testing
+module.exports = app;
