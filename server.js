@@ -8,6 +8,7 @@ const { validate, schemas } = require('./middleware/validation');
 const { getCurrentUser } = require('./middleware/auth');
 const { errorHandler, ApiError } = require('./middleware/error-handler');
 const { logger, loggerMiddleware } = require('./middleware/logger');
+const { swaggerDocs } = require('./swagger');
 
 const prisma = new PrismaClient();
 const app = express();
@@ -21,7 +22,42 @@ app.use(getCurrentUser); // Add authentication middleware
 
 // API Routes
 
-// Create a new feature request
+/**
+ * @swagger
+ * /api/feature-requests:
+ *   post:
+ *     summary: Create a new feature request
+ *     description: Creates a new feature request with the provided title and optional description
+ *     tags: [Feature Requests]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Title of the feature request
+ *               description:
+ *                 type: string
+ *                 description: Detailed description of the feature request
+ *     responses:
+ *       201:
+ *         description: Feature request created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/FeatureRequest'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post(
   '/api/feature-requests',
   validate(schemas.createFeatureRequest),
@@ -41,7 +77,36 @@ app.post(
   })
 );
 
-// Get all feature requests
+/**
+ * @swagger
+ * /api/feature-requests:
+ *   get:
+ *     summary: Get all feature requests
+ *     description: Retrieves a list of all feature requests with optional sorting
+ *     tags: [Feature Requests]
+ *     parameters:
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           enum: [createdAt, status]
+ *         description: Field to sort by
+ *       - in: query
+ *         name: sort_order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *         description: Sort order (ascending or descending)
+ *     responses:
+ *       200:
+ *         description: A list of feature requests
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/FeatureRequest'
+ */
 app.get(
   '/api/feature-requests',
   validate(schemas.getFeatureRequests),
@@ -67,7 +132,34 @@ app.get(
   })
 );
 
-// Get a specific feature request by ID
+/**
+ * @swagger
+ * /api/feature-requests/{id}:
+ *   get:
+ *     summary: Get a specific feature request
+ *     description: Retrieves a specific feature request by its ID
+ *     tags: [Feature Requests]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the feature request to retrieve
+ *     responses:
+ *       200:
+ *         description: Feature request retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/FeatureRequest'
+ *       404:
+ *         description: Feature request not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.get(
   '/api/feature-requests/:id',
   asyncHandler(async (req, res) => {
@@ -89,7 +181,53 @@ app.get(
   })
 );
 
-// Update the status of a feature request
+/**
+ * @swagger
+ * /api/feature-requests/{id}/status:
+ *   put:
+ *     summary: Update the status of a feature request
+ *     description: Updates the status of a specific feature request and records the status change
+ *     tags: [Feature Requests]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the feature request to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [NEW, IN_PROGRESS, COMPLETED, REJECTED]
+ *                 description: New status for the feature request
+ *     responses:
+ *       200:
+ *         description: Feature request status updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/FeatureRequest'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Feature request not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.put(
   '/api/feature-requests/:id/status',
   validate(schemas.updateFeatureRequestStatus),
@@ -134,7 +272,30 @@ app.put(
   })
 );
 
-// Delete a feature request
+/**
+ * @swagger
+ * /api/feature-requests/{id}:
+ *   delete:
+ *     summary: Delete a feature request
+ *     description: Deletes a specific feature request and its status history
+ *     tags: [Feature Requests]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the feature request to delete
+ *     responses:
+ *       204:
+ *         description: Feature request deleted successfully
+ *       404:
+ *         description: Feature request not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.delete(
   '/api/feature-requests/:id',
   asyncHandler(async (req, res) => {
@@ -170,8 +331,10 @@ app.use(errorHandler);
 // Only start the server if this file is run directly
 if (require.main === module) {
   // Start the server
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     logger.info(`Server is running on http://localhost:${PORT}`);
+    // Initialize Swagger docs
+    swaggerDocs(app, PORT);
   });
 
   // Handle graceful shutdown

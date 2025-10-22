@@ -1,85 +1,14 @@
 const request = require('supertest');
-const express = require('express');
-const { z } = require('zod');
+const app = require('../server');
 const { setupTestDatabase, cleanupTestDatabase, closePrismaClient } = require('./setup');
-const { createTestFeatureRequest } = require('./helpers');
 const { prisma } = require('./setup');
-
-// Create a test app
-const createTestApp = () => {
-  const app = express();
-  
-  // Middleware
-  app.use(express.json());
-  
-  // Validation schema
-  const createFeatureRequestSchema = z.object({
-    title: z.string().min(1, { message: 'Title is required' }).max(255),
-    description: z.string().optional(),
-  });
-  
-  // Validation middleware
-  const validate = (schema) => (req, res, next) => {
-    try {
-      const validatedData = schema.parse(req.body);
-      req.body = validatedData;
-      next();
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const errors = error.errors.map(err => ({
-          field: err.path.join('.'),
-          message: err.message,
-        }));
-        
-        return res.status(400).json({
-          code: 'VALIDATION_ERROR',
-          message: 'Validation failed',
-          details: errors,
-        });
-      }
-      
-      next(error);
-    }
-  };
-  
-  // Create a new feature request endpoint
-  app.post(
-    '/api/feature-requests',
-    validate(createFeatureRequestSchema),
-    async (req, res) => {
-      try {
-        const { title, description } = req.body;
-        
-        const newFeatureRequest = await prisma.featureRequest.create({
-          data: {
-            title,
-            description,
-            createdBy: 'current-user',
-          },
-        });
-        
-        res.status(201).json(newFeatureRequest);
-      } catch (error) {
-        console.error(error);
-        res.status(500).json({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'An unexpected error occurred',
-        });
-      }
-    }
-  );
-  
-  return app;
-};
+const { createTestFeatureRequest } = require('./helpers');
 
 // Test suite for the feature request API
 describe('Feature Request API', () => {
-  let app;
-  
-  // Set up the test database and app before all tests
+  // Set up the test database before all tests
   beforeAll(async () => {
     await setupTestDatabase();
-    app = createTestApp();
   });
   
   // Clean up the test database before each test
@@ -94,8 +23,6 @@ describe('Feature Request API', () => {
   
   // Test cases for the POST /api/feature-requests endpoint
   describe('POST /api/feature-requests', () => {
-    // Success cases
-    
     it('should create a new feature request with valid title and description', async () => {
       const response = await request(app)
         .post('/api/feature-requests')
@@ -112,7 +39,7 @@ describe('Feature Request API', () => {
       expect(response.body.status).toBe('NEW');
       expect(response.body).toHaveProperty('createdAt');
       expect(response.body).toHaveProperty('updatedAt');
-      expect(response.body.createdBy).toBe('current-user'); // From the auth middleware
+      expect(response.body.createdBy).toBe('current-user');
     });
     
     it('should create a new feature request with only a title (no description)', async () => {
@@ -133,26 +60,7 @@ describe('Feature Request API', () => {
       expect(response.body.createdBy).toBe('current-user');
     });
     
-    // Error cases
-    
     it('should return 400 when title is missing', async () => {
-      // Mock the validation error for missing title
-      const app = express();
-      app.use(express.json());
-      
-      app.post('/api/feature-requests', (req, res) => {
-        res.status(400).json({
-          code: 'VALIDATION_ERROR',
-          message: 'Validation failed',
-          details: [
-            {
-              field: 'title',
-              message: 'Title is required',
-            },
-          ],
-        });
-      });
-      
       const response = await request(app)
         .post('/api/feature-requests')
         .send({
@@ -168,23 +76,6 @@ describe('Feature Request API', () => {
     });
     
     it('should return 400 when title is empty', async () => {
-      // Mock the validation error for empty title
-      const app = express();
-      app.use(express.json());
-      
-      app.post('/api/feature-requests', (req, res) => {
-        res.status(400).json({
-          code: 'VALIDATION_ERROR',
-          message: 'Validation failed',
-          details: [
-            {
-              field: 'title',
-              message: 'Title is required',
-            },
-          ],
-        });
-      });
-      
       const response = await request(app)
         .post('/api/feature-requests')
         .send({
@@ -199,33 +90,146 @@ describe('Feature Request API', () => {
       expect(response.body).toHaveProperty('details');
       expect(response.body.details[0]).toHaveProperty('field', 'title');
     });
+  });
+  
+  // Test cases for the GET /api/feature-requests endpoint
+  describe('GET /api/feature-requests', () => {
+    it('should return an empty array when no feature requests exist', async () => {
+      const response = await request(app)
+        .get('/api/feature-requests');
+      
+      // Check the response status and body
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(0);
+    });
     
-    it('should return 400 when title is too long (>255 characters)', async () => {
-      // Create a title with 256 characters
-      const longTitle = 'a'.repeat(256);
+    it('should return all feature requests', async () => {
+      // Create test feature requests
+      await createTestFeatureRequest({ title: 'Feature 1' });
+      await createTestFeatureRequest({ title: 'Feature 2' });
       
-      // Mock the validation error for title too long
-      const app = express();
-      app.use(express.json());
+      const response = await request(app)
+        .get('/api/feature-requests');
       
-      app.post('/api/feature-requests', (req, res) => {
-        res.status(400).json({
-          code: 'VALIDATION_ERROR',
-          message: 'Validation failed',
-          details: [
-            {
-              field: 'title',
-              message: 'String must contain at most 255 character(s)',
-            },
-          ],
-        });
+      // Check the response status and body
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(2);
+      expect(response.body[0]).toHaveProperty('title');
+      expect(response.body[1]).toHaveProperty('title');
+    });
+    
+    it('should sort feature requests by createdAt in ascending order', async () => {
+      // Create test feature requests with a delay between them
+      const feature1 = await createTestFeatureRequest({ title: 'Feature 1' });
+      await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
+      const feature2 = await createTestFeatureRequest({ title: 'Feature 2' });
+      
+      const response = await request(app)
+        .get('/api/feature-requests?sort_by=createdAt&sort_order=asc');
+      
+      // Check the response status and body
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(2);
+      expect(response.body[0].id).toBe(feature1.id);
+      expect(response.body[1].id).toBe(feature2.id);
+    });
+    
+    it('should sort feature requests by status', async () => {
+      // Create test feature requests with different statuses
+      const feature1 = await createTestFeatureRequest({ 
+        title: 'Feature 1',
+        status: 'COMPLETED'
+      });
+      const feature2 = await createTestFeatureRequest({ 
+        title: 'Feature 2',
+        status: 'NEW'
       });
       
       const response = await request(app)
-        .post('/api/feature-requests')
+        .get('/api/feature-requests?sort_by=status&sort_order=asc');
+      
+      // Check the response status and body
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(2);
+      expect(response.body[0].status).toBe('COMPLETED');
+      expect(response.body[1].status).toBe('NEW');
+    });
+  });
+  
+  // Test cases for the GET /api/feature-requests/:id endpoint
+  describe('GET /api/feature-requests/:id', () => {
+    it('should return a specific feature request by ID', async () => {
+      // Create a test feature request
+      const feature = await createTestFeatureRequest({ 
+        title: 'Test Feature',
+        description: 'Test Description'
+      });
+      
+      const response = await request(app)
+        .get(`/api/feature-requests/${feature.id}`);
+      
+      // Check the response status and body
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('id', feature.id);
+      expect(response.body).toHaveProperty('title', 'Test Feature');
+      expect(response.body).toHaveProperty('description', 'Test Description');
+      expect(response.body).toHaveProperty('status', 'NEW');
+      expect(response.body).toHaveProperty('statusHistory');
+      expect(Array.isArray(response.body.statusHistory)).toBe(true);
+    });
+    
+    it('should return 404 when feature request does not exist', async () => {
+      const nonExistentId = 'non-existent-id';
+      
+      const response = await request(app)
+        .get(`/api/feature-requests/${nonExistentId}`);
+      
+      // Check the response status and error details
+      expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('code', 'RESOURCE_NOT_FOUND');
+      expect(response.body).toHaveProperty('message', 'Feature request not found');
+    });
+  });
+  
+  // Test cases for the PUT /api/feature-requests/:id/status endpoint
+  describe('PUT /api/feature-requests/:id/status', () => {
+    it('should update the status of a feature request', async () => {
+      // Create a test feature request
+      const feature = await createTestFeatureRequest({ 
+        title: 'Status Test Feature'
+      });
+      
+      const response = await request(app)
+        .put(`/api/feature-requests/${feature.id}/status`)
         .send({
-          title: longTitle,
-          description: 'Title too long',
+          status: 'IN_PROGRESS'
+        });
+      
+      // Check the response status and body
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('id', feature.id);
+      expect(response.body).toHaveProperty('status', 'IN_PROGRESS');
+      expect(response.body).toHaveProperty('statusHistory');
+      expect(Array.isArray(response.body.statusHistory)).toBe(true);
+      expect(response.body.statusHistory.length).toBe(1);
+      expect(response.body.statusHistory[0]).toHaveProperty('oldStatus', 'NEW');
+      expect(response.body.statusHistory[0]).toHaveProperty('newStatus', 'IN_PROGRESS');
+    });
+    
+    it('should return 400 when status is invalid', async () => {
+      // Create a test feature request
+      const feature = await createTestFeatureRequest({ 
+        title: 'Invalid Status Test'
+      });
+      
+      const response = await request(app)
+        .put(`/api/feature-requests/${feature.id}/status`)
+        .send({
+          status: 'INVALID_STATUS'
         });
       
       // Check the response status and error details
@@ -233,7 +237,56 @@ describe('Feature Request API', () => {
       expect(response.body).toHaveProperty('code', 'VALIDATION_ERROR');
       expect(response.body).toHaveProperty('message', 'Validation failed');
       expect(response.body).toHaveProperty('details');
-      expect(response.body.details[0]).toHaveProperty('field', 'title');
+      expect(response.body.details[0]).toHaveProperty('field', 'status');
+    });
+    
+    it('should return 404 when feature request does not exist', async () => {
+      const nonExistentId = 'non-existent-id';
+      
+      const response = await request(app)
+        .put(`/api/feature-requests/${nonExistentId}/status`)
+        .send({
+          status: 'IN_PROGRESS'
+        });
+      
+      // Check the response status and error details
+      expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('code', 'RESOURCE_NOT_FOUND');
+      expect(response.body).toHaveProperty('message', 'Feature request not found');
+    });
+  });
+  
+  // Test cases for the DELETE /api/feature-requests/:id endpoint
+  describe('DELETE /api/feature-requests/:id', () => {
+    it('should delete a feature request', async () => {
+      // Create a test feature request
+      const feature = await createTestFeatureRequest({ 
+        title: 'Delete Test Feature'
+      });
+      
+      const response = await request(app)
+        .delete(`/api/feature-requests/${feature.id}`);
+      
+      // Check the response status
+      expect(response.status).toBe(204);
+      
+      // Verify the feature request was deleted
+      const deletedFeature = await prisma.featureRequest.findUnique({
+        where: { id: feature.id }
+      });
+      expect(deletedFeature).toBeNull();
+    });
+    
+    it('should return 404 when feature request does not exist', async () => {
+      const nonExistentId = 'non-existent-id';
+      
+      const response = await request(app)
+        .delete(`/api/feature-requests/${nonExistentId}`);
+      
+      // Check the response status and error details
+      expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('code', 'RESOURCE_NOT_FOUND');
+      expect(response.body).toHaveProperty('message', 'Feature request not found');
     });
   });
 });
